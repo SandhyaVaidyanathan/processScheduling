@@ -91,11 +91,13 @@ int main(int argc, char const *argv[])
 			return -1;
 		// clock initially set to 0
 		shpcbinfo->pcbId = -1;
-		shpcbinfo->processStartTime = 0;
+		shpcbinfo->parrivalsec = 0;
+		shpcbinfo->parrivalnsec = 0;
 		shpcbinfo->cpuTime = 0;
 		shpcbinfo->lastBurstTime = 0;
 		shpcbinfo->priority = -1;
 		shpcbinfo->systemTime = 0;
+		shpcbinfo->qid = 0;
 	}
 
 
@@ -106,11 +108,14 @@ int i;
 for (i = 0; i < noOfSlaves; ++i)
 {
 	shpcbinfo[i].pcbId = -1;
-	shpcbinfo[i].processStartTime = 0; //time when process is forked
+	shpcbinfo[i].parrivalsec = 0; //time when process is forked
+	shpcbinfo[i].parrivalnsec=0;
 	shpcbinfo[i].priority = -1; // process priority
 	shpcbinfo[i].cpuTime = 0;	//cpu time used
 	shpcbinfo[i].systemTime = 0; // total time in the system
 	shpcbinfo[i].lastBurstTime = 0; //time used during last burst
+	shpcbinfo[i].qid = 0;
+	shpcbinfo[i].ready = 0; //ready to execute if 1
 }
 //logical clock
 fprintf(stderr, "Starting the clock..\n" );
@@ -141,10 +146,11 @@ printf("plus1xxTime %lu \n",plus1xxTime );
        	}
      
     //spawn process if process table is not full.
-       	    printf("spawned at %lu s %lu ns \n",shinfo->sec, shinfo->nsec );
+       	  //  printf("spawned at %lu s %lu ns \n",shinfo->sec, shinfo->nsec );
+       	    fprintf(fp, "Generating process with PID %d and putting it in queue 0 at time %d:%lu\n",mypid,shinfo->sec,shinfo->nsec);
        	    spawnSlaveProcess(1);
- xx = rand()%1000;
-plus1xxTime = currentTime + NANOSECOND +xx;
+			xx = rand()%1000;
+			plus1xxTime = currentTime + NANOSECOND +xx;
 
 }
 
