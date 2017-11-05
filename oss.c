@@ -27,7 +27,7 @@ shmClock *shinfo;
 shmPcb *shpcbinfo;
 int status = 0;
 int spawnedSlaves = 0;
-int mypid = -1;
+int mypid = 0;
 
 const unsigned long int NANOSECOND = 1000000000; 
 const int TOTALPROCESS = 100; //default
@@ -116,26 +116,35 @@ for (i = 0; i < noOfSlaves; ++i)
 fprintf(stderr, "Starting the clock..\n" );
 startTime = time(NULL);
 srand(time(NULL));
-
-while(shinfo->sec <= ztime)
+printf("%lu \n",shinfo->sec );
+printf("%lu \n", ztime);
+while(shinfo->sec < ztime)
 {
 int xx = rand()%1000;
 long unsigned currentTime = (shinfo->sec*NANOSECOND)+shinfo->nsec;
 long unsigned plus1xxTime = currentTime + NANOSECOND +xx;
 int flag = 0;
+printf("currentTime %lu \n", currentTime);
+printf("plus1xxTime %lu \n",plus1xxTime );
+//Don't generate if the process table is full -- ---add
     while ( currentTime <plus1xxTime)
        	{
+
+    		//shinfo->nsec += xx;
     		shinfo->nsec += xx;
         	if (shinfo->nsec > (NANOSECOND - 1))
             {
             shinfo->nsec -= (NANOSECOND - 1);
             	shinfo->sec++;
             }
+           currentTime = (shinfo->sec*NANOSECOND)+shinfo->nsec; 
        	}
      
     //spawn process if process table is not full.
-
+       	    printf("spawned at %lu s %lu ns \n",shinfo->sec, shinfo->nsec );
        	    spawnSlaveProcess(1);
+ xx = rand()%1000;
+plus1xxTime = currentTime + NANOSECOND +xx;
 
 }
 
@@ -153,6 +162,7 @@ int flag = 0;
 void spawnSlaveProcess(int noOfSlaves)
 {
 	int i;
+	mypid++;
 	//Forking processes
 	for(i = 0; i < noOfSlaves; i++) 
 	{ 
@@ -163,8 +173,8 @@ void spawnSlaveProcess(int noOfSlaves)
     if (childpid == 0)
 	    {
     	//execl user.c    	
-			fprintf(stderr,"exec %d\n",i);  
-			sprintf(arg1, "%d", i);
+			fprintf(stderr,"exec %d\n",mypid);  
+			sprintf(arg1, "%d", mypid);
 			//Calling user.c program
 			execl("user", arg1, NULL); 
     	}
