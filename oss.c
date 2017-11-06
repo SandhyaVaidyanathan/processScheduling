@@ -48,33 +48,61 @@ int q1size;
 int q2size;
 int q3size;
 
-void createQ(void);
 bool isEmpty(int);
 void Enqueue(int, int);
-int pop(int);
+int Dequeue(int);
 void clearQ(void);
 int scheduleProcess(void);
 void AvgTAT(int);
 
-const int QUEUE0 = 0;
-const int QUEUE1 = 1;
-const int QUEUE2 = 2;
 const unsigned long int NANOSECOND = 1000000000; 
 const int TOTALPROCESS = 100; //default
 const int ALPHA = 20000000;
 const int BETA = 15000000;
 
+FILE *fp;
 
 int main(int argc, char const *argv[])
 {
 	char* logfile;
 	logfile = "log.txt";
-	int ztime = 200; //default
+	int ztime = 30; //default
 	int noOfSlaves = 5; // default
 	key_t clock_key, pcb_key;
 	unsigned long startTime = 0;
+	int option = 0;
 	arg1 = (char*)malloc(40);
 
+  	while ((option = getopt(argc, argv,"hs:l:t:")) != -1) 
+  	{		
+  	switch (option) 
+  	{		
+  		case 'h' :		
+           printf("Usage executable -s {no. of slave processes to be spawned} -t {time in seconds when master will terminate with all children} \n");		
+           return 1;
+           break;	
+		  case 's':
+    	   noOfSlaves = atoi(optarg);
+    	   if(noOfSlaves < 1 || noOfSlaves >19)
+    	   {
+    	   		fprintf(stderr, "Slave processes count out of range, continuing with default value 5" );
+    	   		noOfSlaves = 5; // default value
+    	   }
+
+           break;
+
+      case 't':
+        	ztime = atoi(optarg);
+        	if (ztime <= 0)
+        	{
+        		fprintf(stderr, "Time should be greater than 0, continuing with default value 20" );
+        		ztime = 20; //default value
+        	}
+        	break;
+        default:
+        	 printf("Usage executable -s {no. of slave processes to be spawned} -t {time in seconds when master will terminate with all children} \n");		
+        }
+    }
 
 //signal handling 
 	signal(SIGINT, interruptHandler); 
@@ -136,7 +164,7 @@ int main(int argc, char const *argv[])
 
 
 // Open log file 
-FILE *fp = fopen(logfile, "w");
+fp = fopen(logfile, "w");
 //initialize all pcb elements
 
 int i;
@@ -154,11 +182,13 @@ for (i = 0; i < noOfSlaves; ++i)
 }
 //logical clock
 fprintf(fp, "Starting the clock..\n" );
-createQ();
+//for queues
+  front0 = front1 = front2 =  NULL;
+  rear0 = rear1 = rear2 =  NULL;
+  q0size = q1size = q2size =  0;
 startTime = time(NULL);
 srand(time(NULL));
-printf("%lu \n",shinfo->sec );
-printf("%lu \n", ztime);
+
 while(shinfo->sec < ztime && spawnedSlaves < noOfSlaves)
 {
 int xx = rand()%1000;
@@ -189,18 +219,14 @@ int flag = 0;
 			plus1xxTime = currentTime + NANOSECOND +xx;
 
 }
-int f = 0;
-	while(f < 5)
-	{
+
 		while(shinfo->scheduledpid != -1);
-				if(shinfo->scheduledpid == -1){
+		{
+			shinfo->scheduledpid = scheduleProcess();
+			shinfo->scheduledpid == -1;
+		}
 
-					shinfo->scheduledpid = scheduleProcess();
-					f++;
-				}
-	}
 
-		
 //Average wait time
 	void AvgTAT(int pcb) {
 
@@ -208,7 +234,9 @@ int f = 0;
  // long systemTime += startToFinish;
   processWaitTime += startToFinish - shpcbinfo[pcb].q;
 }
-	printf("Average wait time : %lu " ,processWaitTime/noOfSlaves);
+	printf("Average wait time : %lu \n" ,processWaitTime%noOfSlaves);
+
+	clearQ();
 
 //clearing memory
 	free(arg1);
@@ -291,12 +319,6 @@ void clearSharedMem2()
 }
 
 
-void createQ() {
-  front0 = front1 = front2 =  NULL;
-  rear0 = rear1 = rear2 =  NULL;
-  q0size = q1size = q2size =  0;
-}
-
 bool isEmpty(int choice) {
   switch(choice) {
     case 0:
@@ -357,7 +379,7 @@ void Enqueue(int processId, int choice) {
       q1size++;
       break;
     case 2:
-      printf("Putting pid %d in queue %d\n",  processId,  choice);
+      printf("oss : Putting pid %d in queue %d\n",  processId,  choice);
       if(rear2 == NULL) {
         rear2 = (struct queue*)malloc(1 * sizeof(struct queue));
         rear2->next = NULL;
@@ -378,8 +400,8 @@ void Enqueue(int processId, int choice) {
   }
 }
 
-int pop(int choice) {
-  pid_t poppedID;
+int Dequeue(int choice) {
+  int poppedID;
   long dispatch;
   switch(choice) {
     case 0:
@@ -400,9 +422,9 @@ int pop(int choice) {
           front0 = NULL;
           rear0 = NULL;
         }
-        printf("Dispatching pid %d from queue %d at %lu:%lu \n", poppedID,choice,shinfo->sec,shinfo->nsec);
+        printf("oss : Dispatching pid %d from queue %d at %lu:%lu \n", poppedID,choice,shinfo->sec,shinfo->nsec);
         dispatch = (shinfo->sec*NANOSECOND + shinfo->nsec) - shpcbinfo[mypid].systemTime;
-        printf("Total time this dispatch was %lu nanoseconds\n",dispatch );
+        printf("oss :Total time this dispatch was %lu nanoseconds\n",dispatch );
         q0size--;
         	shinfo->scheduledpid = -1;	
       }
@@ -465,25 +487,26 @@ int pop(int choice) {
 }
 
 void clearQ(void) {
-  while(!isEmpty(QUEUE0)) {
-    pop(QUEUE0);
+  while(!isEmpty(0)) {
+    Dequeue(0);
   }
-  while(!isEmpty(QUEUE1)) {
-    pop(QUEUE1);
+  while(!isEmpty(1)) {
+    Dequeue(1);
   }
-  while(!isEmpty(QUEUE2)) {
-    pop(QUEUE2);
+  while(!isEmpty(2)) {
+    Dequeue(2);
   }
+  return ;
 }
 int scheduleProcess(void) {
-  if(!isEmpty(QUEUE0)) {
-    return pop(QUEUE0);
+  if(!isEmpty(0)) {
+    return Dequeue(0);
   }
-  else if(!isEmpty(QUEUE1)) {
-    return pop(QUEUE1);
+  else if(!isEmpty(1)) {
+    return Dequeue(1);
   }
-  else if(!isEmpty(QUEUE2)) {
-    return pop(QUEUE2);
+  else if(!isEmpty(2)) {
+    return Dequeue(2);
   }
 
   else return -1;

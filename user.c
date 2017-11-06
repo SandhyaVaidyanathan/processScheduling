@@ -54,7 +54,7 @@ int main(int argc, char const *argv[])
 	int mypid = atoi(argv[0]);
 	signal(SIGINT, interruptHandler); 
 	signal(SIGALRM, interruptHandler);
-	alarm(200);
+	alarm(20);
 //	FILE *fp = fopen(logfile, "w");
 	//Read shared memory segments
 	shmid = shmget(clock_key, 20*sizeof(shinfo), 0744|IPC_EXCL);
@@ -163,7 +163,6 @@ shinfo->nsec +=duration;
         shinfo->sec++;
         }
 
-
 if(shpcbinfo[mypid].cpuTime >= q)
 	{
 	shpcbinfo[mypid].lastBurstTime = duration;
@@ -172,18 +171,41 @@ if(shpcbinfo[mypid].cpuTime >= q)
 	shinfo->scheduledpid = -1;		
 	}
 shinfo->scheduledpid = -1;	
+finished = 1;
 printf( "Exiting this process");
 
 
 }while(!finished);
 
-  if(shmdt(shinfo) == -1) {
-    perror("    Slave could not detach shared memory struct");
-  }
+void clearSharedMem1()
+{
+	int error = 0;
+	if(shmdt(shinfo) == -1) {
+		error = errno;
+	}
+	if((shmctl(shmid, IPC_RMID, NULL) == -1) && !error) {
+		error = errno;
+	}
+	if(!error) {
+		return ;
+	}
+}
 
-  if(shmdt(shpcbinfo) == -1) {
-    perror("    Slave could not detach from shared memory array");
-  }
+void clearSharedMem2()
+{
+	int error = 0;
+	if(shmdt(shpcbinfo) == -1) {
+		error = errno;
+	}
+	if((shmctl(shmpcbid, IPC_RMID, NULL) == -1) && !error) {
+		error = errno;
+	}
+	if(!error) {
+		return ;
+	}
+}
+
 kill(mypid,9);
+mypid = -1;
 return 0;
 }
