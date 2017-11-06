@@ -8,6 +8,7 @@ typedef struct pcb{
     int priority; // process priority
     int qid;
     int ready;
+    unsigned long q;
 }shmPcb;
 
 typedef struct osClock {

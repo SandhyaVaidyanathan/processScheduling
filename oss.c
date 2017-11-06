@@ -12,6 +12,7 @@
 #include <sys/types.h>
 #include <sys/sem.h>
 #include <getopt.h>
+#include <stdbool.h>
 
 #include "shm.h"
 
@@ -28,15 +29,47 @@ shmPcb *shpcbinfo;
 int status = 0;
 int spawnedSlaves = 0;
 int mypid = 0;
+long processWaitTime;
 
+//queues
+//Begin queue stuff//
+
+struct queue {
+  pid_t id;
+  struct queue *next;
+
+} *front0, *front1, *front2,
+  *rear0, *rear1, *rear2, 
+  *temp0, *temp1, *temp2, 
+  *frontA0, *frontA1, *frontA2;
+
+int q0size;
+int q1size;
+int q2size;
+int q3size;
+
+void createQ(void);
+bool isEmpty(int);
+void Enqueue(int, int);
+int pop(int);
+void clearQ(void);
+int scheduleProcess(void);
+void AvgTAT(int);
+
+const int QUEUE0 = 0;
+const int QUEUE1 = 1;
+const int QUEUE2 = 2;
 const unsigned long int NANOSECOND = 1000000000; 
 const int TOTALPROCESS = 100; //default
+const int ALPHA = 20000000;
+const int BETA = 15000000;
+
 
 int main(int argc, char const *argv[])
 {
 	char* logfile;
 	logfile = "log.txt";
-	int ztime = 20; //default
+	int ztime = 200; //default
 	int noOfSlaves = 5; // default
 	key_t clock_key, pcb_key;
 	unsigned long startTime = 0;
@@ -70,6 +103,7 @@ int main(int argc, char const *argv[])
 		// clock initially set to 0
 		shinfo->nsec = 0;
 		shinfo->sec = 0;
+		shinfo->scheduledpid = -1;
 	}
 
 	//create shared memory for pcb
@@ -104,6 +138,7 @@ int main(int argc, char const *argv[])
 // Open log file 
 FILE *fp = fopen(logfile, "w");
 //initialize all pcb elements
+
 int i;
 for (i = 0; i < noOfSlaves; ++i)
 {
@@ -118,19 +153,19 @@ for (i = 0; i < noOfSlaves; ++i)
 	shpcbinfo[i].ready = 0; //ready to execute if 1
 }
 //logical clock
-fprintf(stderr, "Starting the clock..\n" );
+fprintf(fp, "Starting the clock..\n" );
+createQ();
 startTime = time(NULL);
 srand(time(NULL));
 printf("%lu \n",shinfo->sec );
 printf("%lu \n", ztime);
-while(shinfo->sec < ztime)
+while(shinfo->sec < ztime && spawnedSlaves < noOfSlaves)
 {
 int xx = rand()%1000;
 long unsigned currentTime = (shinfo->sec*NANOSECOND)+shinfo->nsec;
 long unsigned plus1xxTime = currentTime + NANOSECOND +xx;
 int flag = 0;
-printf("currentTime %lu \n", currentTime);
-printf("plus1xxTime %lu \n",plus1xxTime );
+
 //Don't generate if the process table is full -- ---add
     while ( currentTime <plus1xxTime)
        	{
@@ -146,14 +181,34 @@ printf("plus1xxTime %lu \n",plus1xxTime );
        	}
      
     //spawn process if process table is not full.
-       	  //  printf("spawned at %lu s %lu ns \n",shinfo->sec, shinfo->nsec );
        	    fprintf(fp, "Generating process with PID %d and putting it in queue 0 at time %d:%lu\n",mypid,shinfo->sec,shinfo->nsec);
+       	    Enqueue(mypid,0);
        	    spawnSlaveProcess(1);
+
 			xx = rand()%1000;
 			plus1xxTime = currentTime + NANOSECOND +xx;
 
 }
+int f = 0;
+	while(f < 5)
+	{
+		while(shinfo->scheduledpid != -1);
+				if(shinfo->scheduledpid == -1){
 
+					shinfo->scheduledpid = scheduleProcess();
+					f++;
+				}
+	}
+
+		
+//Average wait time
+	void AvgTAT(int pcb) {
+
+  long long startToFinish = (shinfo->sec*NANOSECOND +shinfo->nsec) - (shpcbinfo[pcb].parrivalsec*NANOSECOND + shpcbinfo[pcb].parrivalnsec);
+ // long systemTime += startToFinish;
+  processWaitTime += startToFinish - shpcbinfo[pcb].q;
+}
+	printf("Average wait time : %lu " ,processWaitTime/noOfSlaves);
 
 //clearing memory
 	free(arg1);
@@ -179,9 +234,11 @@ void spawnSlaveProcess(int noOfSlaves)
     if (childpid == 0)
 	    {
     	//execl user.c    	
-			fprintf(stderr,"exec %d\n",mypid);  
+	    	//shinfo->scheduledpid = 3;
+			//fprintf(stderr,"exec %d\n",mypid);  
 			sprintf(arg1, "%d", mypid);
 			//Calling user.c program
+
 			execl("user", arg1, NULL); 
     	}
     	spawnedSlaves++;
@@ -232,3 +289,204 @@ void clearSharedMem2()
 		return ;
 	}
 }
+
+
+void createQ() {
+  front0 = front1 = front2 =  NULL;
+  rear0 = rear1 = rear2 =  NULL;
+  q0size = q1size = q2size =  0;
+}
+
+bool isEmpty(int choice) {
+  switch(choice) {
+    case 0:
+      if((front0 == NULL) && (rear0 == NULL))
+        return true;
+      break;
+    case 1:
+      if((front1 == NULL) && (rear1 == NULL))
+        return true;
+      break;
+    case 2:
+      if((front2 == NULL) && (rear2 == NULL))
+        return true;
+      break;
+    default:
+      printf("Not a valid queue choice\n");
+  }
+  return false;
+}
+
+void Enqueue(int processId, int choice) {
+	shpcbinfo[mypid].qid = choice;
+  printf("Putting pid %d in queue %d \n", processId, choice);
+  switch(choice) {
+    case 0:     
+      fprintf(fp,"Putting pid %d in queue %d \n",processId,choice);
+      if(rear0 == NULL) {
+        rear0 = (struct queue*)malloc(1 * sizeof(struct queue));
+        rear0->next = NULL;
+        rear0->id = processId;
+        front0 = rear0;
+      }
+      else {
+        temp0 = (struct queue*)malloc(1 * sizeof(struct queue));
+        rear0->next = temp0;
+        temp0->id = processId;
+        temp0->next = NULL;
+
+        rear0 = temp0;
+      }
+      q0size++;
+      break;
+    case 1:
+      printf("Putting pid %d in queue %d\n", processId, choice);
+      if(rear1 == NULL) {
+        rear1 = (struct queue*)malloc(1 * sizeof(struct queue));
+        rear1->next = NULL;
+        rear1->id = processId;
+        front1 = rear1;
+      }
+      else {
+        temp1 = (struct queue*)malloc(1 * sizeof(struct queue));
+        rear1->next = temp1;
+        temp1->id = processId;
+        temp1->next = NULL;
+        rear1 = temp1;
+      }
+      q1size++;
+      break;
+    case 2:
+      printf("Putting pid %d in queue %d\n",  processId,  choice);
+      if(rear2 == NULL) {
+        rear2 = (struct queue*)malloc(1 * sizeof(struct queue));
+        rear2->next = NULL;
+        rear2->id = processId;
+        front2 = rear2;
+      }
+      else {
+        temp2 = (struct queue*)malloc(1 * sizeof(struct queue));
+        rear2->next = temp2;
+        temp2->id = processId;
+        temp2->next = NULL;
+        rear2 = temp2;
+      }
+      q2size++;
+      break;
+    default:
+      printf("Not a valid queue choice\n");
+  }
+}
+
+int pop(int choice) {
+  pid_t poppedID;
+  long dispatch;
+  switch(choice) {
+    case 0:
+      frontA0 = front0;
+      if(frontA0 == NULL) {
+        printf("Error: dequeuing an empty queue\n");
+      }
+      else {
+        if(frontA0->next != NULL) {
+          frontA0 = frontA0->next;
+          poppedID = front0->id;
+          free(front0);
+          front0 = frontA0;
+        }
+        else {
+          poppedID = front0->id;
+          free(front0);
+          front0 = NULL;
+          rear0 = NULL;
+        }
+        printf("Dispatching pid %d from queue %d at %lu:%lu \n", poppedID,choice,shinfo->sec,shinfo->nsec);
+        dispatch = (shinfo->sec*NANOSECOND + shinfo->nsec) - shpcbinfo[mypid].systemTime;
+        printf("Total time this dispatch was %lu nanoseconds\n",dispatch );
+        q0size--;
+        	shinfo->scheduledpid = -1;	
+      }
+      break;
+    case 1:
+      frontA1 = front1;
+      if(frontA1 == NULL) {
+        printf("Error: dequeuing an empty queue\n");
+      }
+      else {
+        if(frontA1->next != NULL) {
+          frontA1 = frontA1->next;
+          poppedID = front1->id;
+          free(front1);
+          front1 = frontA1;
+        }
+        else {
+          poppedID = front1->id;
+          free(front1);
+          front1 = NULL;
+          rear1 = NULL;
+        }
+        printf("Dispatching pid %d from queue %d\n", poppedID, choice);
+        q1size--;
+        dispatch = (shinfo->sec*NANOSECOND + shinfo->nsec) - shpcbinfo[mypid].systemTime;
+        printf("Total time this dispatch was %lu nanoseconds\n",dispatch );
+        shinfo->scheduledpid = -1;	
+      }
+      break;
+    case 2:
+      frontA2 = front2;
+      if(frontA2 == NULL) {
+        printf("Error: dequeuing an empty queue\n");
+      }
+      else {
+        if(frontA2->next != NULL) {
+          frontA2 = frontA2->next;
+          poppedID = front2->id;
+          free(front2);
+          front2 = frontA2;
+        }
+        else {
+          poppedID = front2->id;
+          free(front2);
+          front2 = NULL;
+          rear2 = NULL;
+        }
+        printf("Dispatching pid %d from queue %d%s\n", poppedID, choice);
+        q2size--;
+        dispatch = (shinfo->sec*NANOSECOND + shinfo->nsec) - shpcbinfo[mypid].systemTime;
+        printf("Total time this dispatch was %lu nanoseconds\n",dispatch );
+        shinfo->scheduledpid = -1;	
+      }
+      break;
+    default:
+      printf("Not a valid queue choice\n");
+  }
+  fprintf(fp, "Dispatching pid %d from queue %d\n", poppedID, choice);
+  return poppedID;
+}
+
+void clearQ(void) {
+  while(!isEmpty(QUEUE0)) {
+    pop(QUEUE0);
+  }
+  while(!isEmpty(QUEUE1)) {
+    pop(QUEUE1);
+  }
+  while(!isEmpty(QUEUE2)) {
+    pop(QUEUE2);
+  }
+}
+int scheduleProcess(void) {
+  if(!isEmpty(QUEUE0)) {
+    return pop(QUEUE0);
+  }
+  else if(!isEmpty(QUEUE1)) {
+    return pop(QUEUE1);
+  }
+  else if(!isEmpty(QUEUE2)) {
+    return pop(QUEUE2);
+  }
+
+  else return -1;
+
+}
+

@@ -19,6 +19,7 @@ shmClock *shinfo;
 shmPcb *shpcbinfo;
 shmClock init_time; // starting time for the process
 
+const unsigned long int NANOSECOND = 1000000000; 
 const int quantum = 800000;
 int q;
 
@@ -47,12 +48,14 @@ int main(int argc, char const *argv[])
 	clock_key = 555;
 	pcb_key = 666;
 	long duration;
+	char* logfile;
+	logfile = "log.txt";
 
 	int mypid = atoi(argv[0]);
 	signal(SIGINT, interruptHandler); 
 	signal(SIGALRM, interruptHandler);
-	alarm(20);
-
+	alarm(200);
+//	FILE *fp = fopen(logfile, "w");
 	//Read shared memory segments
 	shmid = shmget(clock_key, 20*sizeof(shinfo), 0744|IPC_EXCL);
 	if ((shmid == -1) && (errno != EEXIST)) 
@@ -88,20 +91,18 @@ int main(int argc, char const *argv[])
 	}
 
 
-printf("This is in child %d id \n", mypid);
+printf("This has arrived in child %d id \n", mypid);
 	shpcbinfo[mypid].parrivalsec = shinfo->sec;
     shpcbinfo[mypid].parrivalnsec = shinfo->nsec;
 
 
     // Random number in the range 0 - 3 to decide the course of action for the process
-/*    do{
-    	while(shinfo->scheduledpid != mypid && shpcbinfo[mypid].ready!=1);
 
-    }while(flag) */
     srand(shinfo->sec);
     int processAction = rand()%(3+ 1 -0)+ 0;
-    printf("processAction : %d \n",processAction );
-    int r,s,p,flag = 1;
+   // printf("processAction : %d \n",processAction );
+    int r,s,p,finished = 0;
+
     switch(processAction)
     {
     	case 0: 
@@ -120,38 +121,69 @@ printf("This is in child %d id \n", mypid);
     			//wait for IO, move to next queue(not ready queue)
     			r = rand()%5 + 1;
     			s = rand()%1000 + 1;
-    			printf("Hey in case 2 ----\n");
-    			//if(shpcbinfo[mypid].qid < 2)
-    			//	shpcbinfo[mypid].qid++;
+    			if(shpcbinfo[mypid].qid < 2)
+    				shpcbinfo[mypid].qid++;
     			break;
     		}
     	case 3:
     		{	
     			p = rand()%99 + 1;
     			sleep(p);
-    			printf("Hey in case 3 ----\n");
     			//fprintf(fp, "Not using its entire time quantum");
-    			//if(shpcbinfo[mypid].qid < 2)
-    			//	shpcbinfo[mypid].qid++;
+    			if(shpcbinfo[mypid].qid < 2)
+    				shpcbinfo[mypid].qid++;
     			break;
     		}
     	default:
     		break;
     }
 
-if (shpcbinfo[mypid].qid == 0)
-	q = quantum;
-else if(shpcbinfo[mypid].qid == 1)
-	q = quantum/2;
-else
-	q = quantum/4;
+    do{
 
+    while(mypid != shinfo->scheduledpid);
+if (shpcbinfo[mypid].qid == 0)
+	shpcbinfo[mypid].q = quantum;
+else if(shpcbinfo[mypid].qid == 1)
+	shpcbinfo[mypid].q = quantum/2;
+else
+	shpcbinfo[mypid].q = quantum/4;
+
+printf("%lu is the quantum  \n",q );
 if (processAction == 3)
    	duration = rand()%q;
 else
    	duration = q;
 
+printf("%lu is the duration \n",duration );
 shpcbinfo[mypid].cpuTime +=duration;
+shinfo->nsec +=duration;
+    if (shinfo->nsec > (NANOSECOND - 1))
+        {
+        shinfo->nsec -= (NANOSECOND - 1);
+        shinfo->sec++;
+        }
+
+
+if(shpcbinfo[mypid].cpuTime >= q)
+	{
+	shpcbinfo[mypid].lastBurstTime = duration;
+    shpcbinfo[mypid].systemTime = (shinfo->sec * NANOSECOND + shinfo->nsec) - (shpcbinfo[mypid].parrivalsec*NANOSECOND + shpcbinfo[mypid].parrivalnsec);
+	finished = 1;
+	shinfo->scheduledpid = -1;		
+	}
+shinfo->scheduledpid = -1;	
+printf( "Exiting this process");
+
+
+}while(!finished);
+
+  if(shmdt(shinfo) == -1) {
+    perror("    Slave could not detach shared memory struct");
+  }
+
+  if(shmdt(shpcbinfo) == -1) {
+    perror("    Slave could not detach from shared memory array");
+  }
+kill(mypid,9);
 return 0;
 }
-
